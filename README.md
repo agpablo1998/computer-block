@@ -94,10 +94,20 @@ the attestation.
 | Evidence | What it shows | Where |
 |---|---|---|
 | TLC model checker: 1,708,980 distinct states, all invariants and 6 liveness properties (22 min) | Safety and liveness properties hold in every reachable state, assuming any notification can be lost, the program can crash at any moment, Explorer can restart and window commands land late | `spec/Lockdown.tla`, `spec/MC.cfg` |
-| Model conformance test | The Rust core makes the same decision as the model in every program transition of the model's full state graph (9,540 transitions with one window, all of them with two windows in CI). Three bugs planted in the Rust core (off-by-one strike limit, late pause timeout, stale strikes) were each caught. Three bugs planted in the spec (sweep forgets the printer, timer not guaranteed, maximize fullscreen windows) each produced a counterexample, so the properties are not vacuous. | `src/core/conformance.rs`, `scripts/check-model.sh` |
+| Model conformance test | The Rust core makes the same decision as the model in every program transition of the model's full state graph (9,540 transitions with one window, all 328,312 with two windows in CI). Three bugs planted in the Rust core (off-by-one strike limit, late pause timeout, stale strikes) were each caught. Three bugs planted in the spec (sweep forgets the printer, timer not guaranteed, maximize fullscreen windows) each produced a counterexample, so the properties are not vacuous. | `src/core/conformance.rs`, `scripts/check-model.sh` |
 | Property tests | Same safety rules with production numbers (3 strikes, 30-minute pause, 5 windows), 2,000 random runs | `src/core/tests.rs` |
 | End-to-end smoke test on a real Windows desktop | Re-maximize, fullscreen respect, fight-loop guard, lock and printer restore, real admin hotkey, idle CPU and memory, clean uninstall | `examples/smoke.rs`, CI job `windows` |
 | `clippy` (pedantic, no `unwrap`/`panic`/unchecked indexing), `cargo audit` | Code hygiene and known-vulnerable dependencies | CI |
+
+Measured on the GitHub Windows runner (CI smoke test):
+
+| | Target | Measured |
+|---|---|---|
+| `.exe` size | under 500 KB | 254 KB |
+| Private memory (Task Manager's Memory column) | under 10 MB | 2.2 MB (working set incl. shared Windows DLLs: 17.9 MB) |
+| CPU while idle | under 1% | 15 ms in 6 s with a 2 s test sweep (the real sweep is every 60 s) |
+| Minimized or un-maximized window back to maximized | immediate | under 0.1 s |
+| App that fights back | bounded | 5 corrections in 1.5 s, then left alone until the next sweep |
 
 Proven properties (`spec/Lockdown.tla`):
 
