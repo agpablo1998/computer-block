@@ -69,6 +69,9 @@ jobs:
           $size = (Get-Item target/release/computer-block.exe).Length
           "computer-block.exe: $([math]::Round($size / 1KB)) KB" | Tee-Object -Append $env:GITHUB_STEP_SUMMARY
           if ($size -gt 500KB) { throw "binary is over budget" }
+      - name: Second printer, so the printer-restore check runs
+        shell: pwsh
+        run: Add-Printer -Name "computer-block test" -DriverName "Microsoft Print To PDF" -PortName "PORTPROMPT:"
       - name: Smoke test on the runner's desktop
         shell: pwsh
         run: |

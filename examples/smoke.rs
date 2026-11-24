@@ -44,7 +44,9 @@ mod imp {
         PRINTER_ENUM_LOCAL, PRINTER_INFO_4W,
     };
     use windows::Win32::System::LibraryLoader::GetModuleHandleW;
-    use windows::Win32::System::ProcessStatus::{GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS};
+    use windows::Win32::System::ProcessStatus::{
+        GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS, PROCESS_MEMORY_COUNTERS_EX,
+    };
     use windows::Win32::System::Registry::{
         RegDeleteKeyValueW, RegGetValueW, HKEY_CURRENT_USER, RRF_RT_ANY,
     };
@@ -287,18 +289,24 @@ mod imp {
         ((u64::from(t.dwHighDateTime) << 32) | u64::from(t.dwLowDateTime)) / 10_000
     }
 
-    /// (CPU milliseconds, working set bytes) of a process.
-    fn usage(proc: HANDLE) -> (u64, usize) {
+    /// (CPU milliseconds, private bytes, working set bytes) of a process.
+    /// Private bytes is what Task Manager's Memory column shows; the
+    /// working set also counts pages of shared Windows DLLs.
+    fn usage(proc: HANDLE) -> (u64, usize, usize) {
         unsafe {
             let (mut c, mut e, mut k, mut u) = Default::default();
             let _ = GetProcessTimes(proc, &raw mut c, &raw mut e, &raw mut k, &raw mut u);
-            let mut mem = PROCESS_MEMORY_COUNTERS::default();
+            let mut mem = PROCESS_MEMORY_COUNTERS_EX::default();
             let _ = GetProcessMemoryInfo(
                 proc,
-                &raw mut mem,
-                u32::try_from(std::mem::size_of::<PROCESS_MEMORY_COUNTERS>()).unwrap(),
+                (&raw mut mem).cast::<PROCESS_MEMORY_COUNTERS>(),
+                u32::try_from(std::mem::size_of::<PROCESS_MEMORY_COUNTERS_EX>()).unwrap(),
             );
-            (filetime_ms(k) + filetime_ms(u), mem.WorkingSetSize)
+            (
+                filetime_ms(k) + filetime_ms(u),
+                mem.PrivateUsage,
+                mem.WorkingSetSize,
+            )
         }
     }
 
@@ -394,8 +402,27 @@ mod imp {
             "fullscreen window is left alone",
         );
 
-        // Fight loop: the window un-maximizes itself every time.
-        unsafe { ShowWindow(win, SW_RESTORE).ok().ok() };
+        // Fight loop: the window un-maximizes itself every time. First give
+        // it a small restore size again: after the fullscreen check its
+        // restore size is the whole monitor, which counts as fullscreen.
+        unsafe {
+            let wp = WINDOWPLACEMENT {
+                length: u32::try_from(std::mem::size_of::<WINDOWPLACEMENT>()).unwrap(),
+                showCmd: SW_SHOWNORMAL.0 as u32,
+                rcNormalPosition: RECT {
+                    left: 100,
+                    top: 100,
+                    right: 600,
+                    bottom: 400,
+                },
+                ..Default::default()
+            };
+            let _ = SetWindowPlacement(win, &raw const wp);
+        }
+        r.check(
+            wait_until(sec(2), || zoomed(win)),
+            "small restored window is maximized again",
+        );
         std::thread::sleep(Duration::from_millis(300));
         FIGHT.store(true, Ordering::SeqCst);
         MAXIMIZES.store(0, Ordering::SeqCst);
@@ -463,16 +490,17 @@ mod imp {
         }
 
         // Resource use while idle (only the 2 s test tick wakes it).
-        let (cpu0, _) = usage(proc);
+        let (cpu0, _, _) = usage(proc);
         std::thread::sleep(sec(6));
-        let (cpu1, ws) = usage(proc);
+        let (cpu1, private, ws) = usage(proc);
         println!(
-            "info: idle CPU {} ms over 6 s, total CPU {cpu1} ms, working set {} KB",
+            "info: idle CPU {} ms over 6 s, total CPU {cpu1} ms, private memory {} KB, working set {} KB (incl. shared DLLs)",
             cpu1 - cpu0,
+            private / 1024,
             ws / 1024
         );
         r.check(cpu1 - cpu0 <= 60, "idle CPU under 1%");
-        r.check(ws < 10 * 1024 * 1024, "memory under 10 MB");
+        r.check(private < 10 * 1024 * 1024, "private memory under 10 MB");
 
         let un = Command::new(&exe)
             .args(["--uninstall", "--quiet"])

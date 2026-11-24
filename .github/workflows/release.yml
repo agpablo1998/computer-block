@@ -21,6 +21,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@1.97.0
       - run: cargo test --release
       - run: cargo build --release --bins --examples
+      - name: Second printer, so the printer-restore check runs
+        shell: pwsh
+        run: Add-Printer -Name "computer-block test" -DriverName "Microsoft Print To PDF" -PortName "PORTPROMPT:"
       - name: Smoke test before publishing
         shell: pwsh
         run: ./target/release/examples/smoke.exe "$PWD/target/release/computer-block.exe"
