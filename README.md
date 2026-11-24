@@ -93,8 +93,8 @@ the attestation.
 
 | Evidence | What it shows | Where |
 |---|---|---|
-| TLC model checker, about 2M states | Safety and liveness properties hold in every reachable state, assuming any notification can be lost, the program can crash at any moment, Explorer can restart and window commands land late | `spec/Lockdown.tla`, `spec/MC.cfg` |
-| Model conformance test | The Rust core makes the same decision as the model in every program transition of the model's full state graph (9,540 transitions with one window, all of them with two windows in CI). Three planted bugs (off-by-one strike limit, late pause timeout, stale strikes) were each caught. | `src/core/conformance.rs`, `scripts/check-model.sh` |
+| TLC model checker: 1,708,980 distinct states, all invariants and 6 liveness properties (22 min) | Safety and liveness properties hold in every reachable state, assuming any notification can be lost, the program can crash at any moment, Explorer can restart and window commands land late | `spec/Lockdown.tla`, `spec/MC.cfg` |
+| Model conformance test | The Rust core makes the same decision as the model in every program transition of the model's full state graph (9,540 transitions with one window, all of them with two windows in CI). Three bugs planted in the Rust core (off-by-one strike limit, late pause timeout, stale strikes) were each caught. Three bugs planted in the spec (sweep forgets the printer, timer not guaranteed, maximize fullscreen windows) each produced a counterexample, so the properties are not vacuous. | `src/core/conformance.rs`, `scripts/check-model.sh` |
 | Property tests | Same safety rules with production numbers (3 strikes, 30-minute pause, 5 windows), 2,000 random runs | `src/core/tests.rs` |
 | End-to-end smoke test on a real Windows desktop | Re-maximize, fullscreen respect, fight-loop guard, lock and printer restore, real admin hotkey, idle CPU and memory, clean uninstall | `examples/smoke.rs`, CI job `windows` |
 | `clippy` (pedantic, no `unwrap`/`panic`/unchecked indexing), `cargo audit` | Code hygiene and known-vulnerable dependencies | CI |
