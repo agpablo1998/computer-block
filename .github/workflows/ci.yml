@@ -1,0 +1,85 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  core:
+    name: Core logic (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.97.0
+        with:
+          components: clippy, rustfmt
+          targets: x86_64-pc-windows-gnu
+      - run: cargo fmt --check
+      - name: Clippy (host, and Windows code via cross-check)
+        run: |
+          cargo clippy --all-targets -- -D warnings
+          cargo clippy --target x86_64-pc-windows-gnu --all-targets -- -D warnings
+      - name: Unit and property tests
+        run: cargo test --release
+
+  model:
+    name: TLA+ model check and conformance
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.97.0
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - run: scripts/check-model.sh --full
+
+  audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.97.0
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
+      - run: cargo audit --deny warnings
+
+  windows:
+    name: Windows build and end-to-end smoke test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.97.0
+        with:
+          components: clippy
+      - run: cargo clippy --release --all-targets -- -D warnings
+      - run: cargo build --release --bins --examples
+      - name: Size budget (500 KB)
+        shell: pwsh
+        run: |
+          $size = (Get-Item target/release/computer-block.exe).Length
+          "computer-block.exe: $([math]::Round($size / 1KB)) KB" | Tee-Object -Append $env:GITHUB_STEP_SUMMARY
+          if ($size -gt 500KB) { throw "binary is over budget" }
+      - name: Second printer, so the printer-restore check runs
+        shell: pwsh
+        run: Add-Printer -Name "computer-block test" -DriverName "Microsoft Print To PDF" -PortName "PORTPROMPT:"
+      - name: Smoke test on the runner's desktop
+        shell: pwsh
+        run: |
+          ./target/release/examples/smoke.exe "$PWD/target/release/computer-block.exe" | Tee-Object smoke.txt
+          $code = $LASTEXITCODE
+          "``````" + "`n" + (Get-Content smoke.txt -Raw) + "``````" | Out-File -Append $env:GITHUB_STEP_SUMMARY
+          exit $code
+      - uses: actions/upload-artifact@v4
+        with:
+          name: computer-block-exe
+          path: target/release/computer-block.exe

@@ -1,0 +1,43 @@
+name: Release
+
+# Push a tag like v0.1.0 to publish a release. The .exe gets a SHA-256 file
+# and a signed build-provenance attestation, so anyone can check that a
+# downloaded file was built by this workflow from this repository:
+#   gh attestation verify computer-block.exe --repo <owner>/<repo>
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.97.0
+      - run: cargo test --release
+      - run: cargo build --release --bins --examples
+      - name: Second printer, so the printer-restore check runs
+        shell: pwsh
+        run: Add-Printer -Name "computer-block test" -DriverName "Microsoft Print To PDF" -PortName "PORTPROMPT:"
+      - name: Smoke test before publishing
+        shell: pwsh
+        run: ./target/release/examples/smoke.exe "$PWD/target/release/computer-block.exe"
+      - name: Checksum
+        shell: pwsh
+        run: |
+          Copy-Item target/release/computer-block.exe computer-block.exe
+          (Get-FileHash computer-block.exe -Algorithm SHA256).Hash.ToLower() + "  computer-block.exe" |
+            Out-File -Encoding ascii computer-block.exe.sha256
+      - uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: computer-block.exe
+      - name: Publish
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${{ github.ref_name }}" computer-block.exe computer-block.exe.sha256 --generate-notes

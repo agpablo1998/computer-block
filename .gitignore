@@ -1,0 +1,4 @@
+target/
+*.dot
+spec/states/
+spec/*_TTrace_*
