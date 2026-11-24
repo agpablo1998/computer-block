@@ -77,6 +77,8 @@ impl World for FakeWorld {
     }
 }
 
+const NONE: Vec<Command> = Vec::new();
+
 fn started(world: &FakeWorld) -> Running {
     Booting::new(Config::DEFAULT).start(world).0
 }
@@ -112,7 +114,7 @@ fn minimized_window_is_maximized_until_strikes_run_out() {
         );
     }
     // An app that keeps fighting is left alone until the next tick.
-    assert!(r.handle(Event::WindowChanged(WinId(7)), &world).is_empty());
+    assert_eq!(r.handle(Event::WindowChanged(WinId(7)), &world), NONE);
     assert_eq!(
         r.handle(Event::Tick, &world),
         vec![Command::Maximize(WinId(7))]
@@ -129,11 +131,12 @@ fn fullscreen_and_dragging_are_left_alone() {
         WinState::Closed,
     ] {
         let world = FakeWorld::tidy().with(1, s);
-        assert!(
-            r.handle(Event::WindowChanged(WinId(1)), &world).is_empty(),
+        assert_eq!(
+            r.handle(Event::WindowChanged(WinId(1)), &world),
+            NONE,
             "{s:?}"
         );
-        assert!(r.handle(Event::Tick, &world).is_empty(), "{s:?}");
+        assert_eq!(r.handle(Event::Tick, &world), NONE, "{s:?}");
     }
 }
 
@@ -162,9 +165,9 @@ fn pause_lifts_policies_ignores_drift_and_times_out() {
     world.printer_ok = false;
     world.windows.insert(WinId(1), WinState::Minimized);
     for left in (1..Config::DEFAULT.pause_ticks).rev() {
-        assert!(r.handle(Event::PrinterChanged, &world).is_empty());
-        assert!(r.handle(Event::WindowChanged(WinId(1)), &world).is_empty());
-        assert!(r.handle(Event::Tick, &world).is_empty());
+        assert_eq!(r.handle(Event::PrinterChanged, &world), NONE);
+        assert_eq!(r.handle(Event::WindowChanged(WinId(1)), &world), NONE);
+        assert_eq!(r.handle(Event::Tick, &world), NONE);
         assert_eq!(r.mode(), Mode::Paused { ticks_left: left });
     }
     let cmds = r.handle(Event::Tick, &world);
@@ -212,7 +215,7 @@ fn single_notifications_fix_only_their_subject() {
         vec![Command::ApplyPolicies]
     );
     world.desktop = Desktop::Unavailable;
-    assert!(r.handle(Event::DesktopChanged, &world).is_empty());
+    assert_eq!(r.handle(Event::DesktopChanged, &world), NONE);
 }
 
 // ---------------------------------------------------------------------------
